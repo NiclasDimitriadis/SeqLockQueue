@@ -167,6 +167,65 @@ TEST_CASE("testing Queue::SeqLockQueue") {
     CHECK(enqSum == deqSum1);
     CHECK(enqSum == deqSum2);
   }
+
+
+SUBCASE(
+      "testing for correct behavior under concurrent enqueueing and dequeueing without UB using 64-bit integers") {
+    static constexpr std::uint32_t nElements = 128 * 1048576;
+    using slqClass = Queue::SeqLockQueue<std::uint64_t, nElements, true, false>;
+    slqClass testSlq;
+    std::uint64_t enqSum{0}, deqSum1{0}, deqSum2{0};
+    std::atomic_flag startSignal{false};
+
+    std::thread enqThread([&]() {
+      std::srand(std::time(nullptr));
+      std::uint64_t randInt{0};
+      while (!startSignal.test())
+        ;
+      for (int i = 0; i < nElements; ++i) {
+        randInt = std::rand();
+        testSlq.enqueue(randInt);
+        enqSum += randInt;
+      }
+    });
+
+    std::thread deqThread1([&]() {
+      std::optional<std::uint64_t> deqRes;
+      int nIter{0};
+      auto testReader = testSlq.get_reader();
+      while (!startSignal.test());
+      while (nIter < nElements) {
+        deqRes = testReader.read_next_entry();
+        if (deqRes.has_value()) {
+          deqSum1 += deqRes.value();
+          ++nIter;
+        }
+      }
+    });
+
+    std::thread deqThread2([&]() {
+      std::optional<std::uint64_t> deqRes;
+      int nIter{0};
+      auto testReader = testSlq.get_reader();
+      while (!startSignal.test());
+      while (nIter < nElements) {
+        deqRes = testReader.read_next_entry();
+        if (deqRes.has_value()) {
+          deqSum2 += deqRes.value();
+          ++nIter;
+        }
+      }
+    });
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    startSignal.test_and_set();
+    enqThread.join();
+    deqThread1.join();
+    deqThread2.join();
+
+    CHECK(enqSum == deqSum1);
+    CHECK(enqSum == deqSum2);
+  }
 }
 
 int main() {
