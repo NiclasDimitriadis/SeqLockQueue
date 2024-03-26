@@ -48,7 +48,7 @@ requires std::is_trivially_copyable_v<T>
 struct atomic_arr_copy<T, std::integer_sequence<size_t, indices_8byte...>, std::integer_sequence<size_t, indices_1byte...>>{
 private:
   static constexpr size_t size = sizeof(T);
-  static constexpr size_t one_byte_threshold = size * (size/8);
+  static constexpr size_t one_byte_threshold = 8 * (size/8);
   T value;
 public:
   using type = T;

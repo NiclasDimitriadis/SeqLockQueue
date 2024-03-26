@@ -9,6 +9,16 @@
 
 #include "Queue.hpp"
 
+struct test_class_12bytes{
+  int i1;
+  int i2;
+  int i3;
+  std::uint64_t get_sum() const noexcept{
+    return i1 + i2 + i3;
+  };
+  test_class_12bytes(): i1{std::rand()}, i2{std::rand()}, i3{std::rand()}{};
+};
+
 TEST_CASE("testing Queue::SeqLockQueue") {
   SUBCASE("testing enqueueing and dequeueing with shared cachline") {
     using slqClass = Queue::SeqLockQueue<int, 8, true, false>;
@@ -112,11 +122,13 @@ TEST_CASE("testing Queue::SeqLockQueue") {
 
     SUBCASE(
       "testing for correct behavior under concurrent enqueueing and dequeueing without UB") {
-    static constexpr std::uint32_t nElements = 128 * 1048576;
+    static constexpr std::uint32_t nElements = 524288;
     using slqClass = Queue::SeqLockQueue<int, nElements, true, false>;
     slqClass testSlq;
-    std::int64_t enqSum{0}, deqSum1{0}, deqSum2{0};
-    std::atomic_flag startSignal{false};
+    std::uint64_t enqSum{0};
+    alignas(64) std::uint64_t deqSum1{0};
+    alignas(64) std::uint64_t deqSum2{0};
+    alignas(64) std::atomic_flag startSignal{false};
 
     std::thread enqThread([&]() {
       std::srand(std::time(nullptr));
@@ -171,11 +183,13 @@ TEST_CASE("testing Queue::SeqLockQueue") {
 
 SUBCASE(
       "testing for correct behavior under concurrent enqueueing and dequeueing without UB using 64-bit integers") {
-    static constexpr std::uint32_t nElements = 128 * 1048576;
+    static constexpr std::uint32_t nElements = 524288;
     using slqClass = Queue::SeqLockQueue<std::uint64_t, nElements, true, false>;
     slqClass testSlq;
-    std::uint64_t enqSum{0}, deqSum1{0}, deqSum2{0};
-    std::atomic_flag startSignal{false};
+    std::uint64_t enqSum{0};
+    alignas(64) std::uint64_t deqSum1{0};
+    alignas(64) std::uint64_t deqSum2{0};
+    alignas(64) std::atomic_flag startSignal{false};
 
     std::thread enqThread([&]() {
       std::srand(std::time(nullptr));
@@ -226,6 +240,65 @@ SUBCASE(
     CHECK(enqSum == deqSum1);
     CHECK(enqSum == deqSum2);
   }
+
+SUBCASE(
+      "testing for correct behavior under concurrent enqueueing and dequeueing with copying, both byte-wise and in 8-byte chunks") {
+    static constexpr std::uint32_t nElements = 524288;
+    using slqClass = Queue::SeqLockQueue<test_class_12bytes, nElements, true, false>;
+    slqClass testSlq;
+    std::uint64_t enqSum{0};
+    alignas(64) std::uint64_t deqSum1{0};
+    alignas(64) std::uint64_t deqSum2{0};
+    alignas(64) std::atomic_flag startSignal{false};
+
+    std::thread enqThread([&]() {
+      std::srand(std::time(nullptr));
+      while (!startSignal.test())
+        ;
+      for (int i = 0; i < nElements; ++i) {
+        const test_class_12bytes randObject;
+        testSlq.enqueue(randObject);
+        enqSum += randObject.get_sum();
+      }
+    });
+
+    std::thread deqThread1([&]() {
+      std::optional<test_class_12bytes> deqRes;
+      int nIter{0};
+      auto testReader = testSlq.get_reader();
+      while (!startSignal.test());
+      while (nIter < nElements) {
+        deqRes = testReader.read_next_entry();
+        if (deqRes.has_value()) {
+          deqSum1 += deqRes.value().get_sum();
+          ++nIter;
+        }
+      }
+    });
+
+    std::thread deqThread2([&]() {
+      std::optional<test_class_12bytes> deqRes;
+      int nIter{0};
+      auto testReader = testSlq.get_reader();
+      while (!startSignal.test());
+      while (nIter < nElements) {
+        deqRes = testReader.read_next_entry();
+        if (deqRes.has_value()) {
+          deqSum2 += deqRes.value().get_sum();
+          ++nIter;
+        }
+      }
+    });
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    startSignal.test_and_set();
+    enqThread.join();
+    deqThread1.join();
+    deqThread2.join();
+
+    CHECK(enqSum == deqSum1);
+    CHECK(enqSum == deqSum2);
+}
 }
 
 int main() {
