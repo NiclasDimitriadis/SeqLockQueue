@@ -6,6 +6,7 @@
 #include <new>
 #include <optional>
 #include <span>
+#include <utility>
 
 #include "SLQ_Auxil.hpp"
 #include "Element.hpp"
@@ -19,22 +20,20 @@ template <typename ContentType_, std::uint32_t length_, bool share_cacheline, bo
   std::atomic<std::int64_t>::is_always_lock_free
 struct SeqLockQueue {
 private:
-  static constexpr std::uint16_t cacheline = 64;
+  static constexpr size_t cacheline = 64;
   static constexpr std::uint32_t length = length_;
-  static constexpr std::uint16_t default_alignment =
+  static constexpr size_t default_alignment =
       alignof(Element::SeqLockElement<SLQ_Auxil::UB_or_not_UB<ContentType_, accept_UB>, 0>);
-  static constexpr std::uint16_t alignment =
+  static constexpr size_t element_alignment =
       share_cacheline * SLQ_Auxil::divisible_or_ceil(default_alignment, cacheline) +
       cacheline * !share_cacheline *
           (default_alignment / cacheline +
            1 * (default_alignment % cacheline != 0));
 
-  using ElementType = Element::SeqLockElement<SLQ_Auxil::UB_or_not_UB<ContentType_, accept_UB>, alignment>;
+  static constexpr size_t memory_alignment = std::max(cacheline, element_alignment);
+  using ElementType = Element::SeqLockElement<SLQ_Auxil::UB_or_not_UB<ContentType_, accept_UB>, element_alignment>;
   using ReadReturnType = std::tuple<std::optional<ContentType_>, std::int64_t>;
-  static constexpr std::uint16_t element_size = sizeof(ElementType);
-  static constexpr std::uint32_t byte_length =
-      std::max(alignment, element_size) * length;
-  ElementType* const memory_pointer;
+  const std::unique_ptr<ElementType[]> memory_pointer;
   // data used by dequeueing thread
   const std::span<ElementType, length> dequeue_span;
   // data used by enqueueing thread
@@ -43,7 +42,7 @@ private:
 
   struct QueueReader{
   private:
-    const SeqLockQueue* queue_ptr;
+    const SeqLockQueue* const queue_ptr;
     std::int64_t read_index = 0;
     std::int64_t prev_version = 1;
   public:
@@ -59,7 +58,7 @@ private:
 public:
   using ContentType = ContentType_;
   explicit SeqLockQueue();
-  ~SeqLockQueue();
+  ~SeqLockQueue() = default;
   SeqLockQueue(const SeqLockQueue &) = delete;
   SeqLockQueue &operator=(const SeqLockQueue &) = delete;
   SeqLockQueue(SeqLockQueue &&) = delete;
@@ -84,12 +83,9 @@ public:
 
 TEMPLATE_PARAMS
 SEQ_LOCK_QUEUE::SeqLockQueue()
-    :memory_pointer{new(std::align_val_t{cacheline}) ElementType[length]},
-     dequeue_span{this->memory_pointer, length},
-     enqueue_span{this->memory_pointer, length} {};
-
-TEMPLATE_PARAMS
-SEQ_LOCK_QUEUE::~SeqLockQueue() { delete[] this->memory_pointer; };
+    :memory_pointer{new(std::align_val_t{memory_alignment}) ElementType[length]()},
+     dequeue_span{this->memory_pointer.get(), length},
+     enqueue_span{this->memory_pointer.get(), length} {};
 
 TEMPLATE_PARAMS
 SEQ_LOCK_QUEUE::ReadReturnType SEQ_LOCK_QUEUE::read_element(std::int64_t read_index, std::int64_t prev_version) const noexcept {
