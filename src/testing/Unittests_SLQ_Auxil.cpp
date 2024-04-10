@@ -33,8 +33,8 @@ TEST_CASE("testing SLQ_Auxil"){
         auto test_atomic_arr_copy_1 = TestAtomicArrCopy(test_tuple);
         TestAtomicArrCopy test_atomic_arr_copy_2;
         test_atomic_arr_copy_2 = test_atomic_arr_copy_1;
-        CHECK(test_atomic_arr_copy_1.return_instance() == test_tuple);
-        CHECK(test_atomic_arr_copy_2.return_instance() == test_tuple);
+        CHECK(static_cast<TestTuple>(test_atomic_arr_copy_1) == test_tuple);
+        CHECK(static_cast<TestTuple>(test_atomic_arr_copy_2) == test_tuple);
     };
 
     SUBCASE("testing SLQ_Auxil::atomic_arr_copy_standin"){
@@ -42,8 +42,8 @@ TEST_CASE("testing SLQ_Auxil"){
         auto test_atomic_arr_copy_1 = TestAtomicArrCopyStandin(test_tuple);
         TestAtomicArrCopyStandin test_atomic_arr_copy_2;
         test_atomic_arr_copy_2 = test_atomic_arr_copy_1;
-        CHECK(test_atomic_arr_copy_1.return_instance() == test_tuple);
-        CHECK(test_atomic_arr_copy_2.return_instance() == test_tuple);
+        CHECK(static_cast<TestTuple>(test_atomic_arr_copy_1) == test_tuple);
+        CHECK(static_cast<TestTuple>(test_atomic_arr_copy_2) == test_tuple);
     };
 };
 

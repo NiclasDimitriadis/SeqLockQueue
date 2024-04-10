@@ -19,11 +19,11 @@ Simple C++ implementation of a sequential-lock queue that heavily makes use of t
 - version increment thus effectively acts as a spin lock for dequeueing
 
 #### `atomic_arr_copy`
-`template<typename T, size_t... indices_8byte, size_t... indices_1byte>`<br>
+`template<typename T, size_t... indices>`<br>
 `requires std::is_trivially_copyable_v<T>`<br>
 `&& std::is_default_constructible_v<T>`<br>
-`&& std::atomic<std::uint64_t>::is_always_lock_free`<br>
-`struct atomic_arr_copy<T, std::integer_sequence<size_t, indices_8byte...>, std::integer_sequence<size_t, indices_1byte...>>`
+`&& std::atomic<char>::is_always_lock_free`<br>
+`struct atomic_arr_copy<T, std::integer_sequence<size_t, indices>>`
 - should be specialized via:<br>
 `template <typename T>`<br>
 `using atomic_arr_copy_t`
@@ -32,11 +32,11 @@ Simple C++ implementation of a sequential-lock queue that heavily makes use of t
 -  `std::is_trivially_copyable_v<T>`: ensures that an instance of `T` can be copied by simply copying the memory it occupies
 -  `std::is_default_constructible_v<T>`: ensures that `atomic_arr_copy` and therefore also `SeqLockElement` down the line, can be default constructed
 -  `std::atomic<std::uint64_t>::is_always_lock_free`: ensures that 8-byte chunks can actually be atomically copied without imposing a software lock
-- for the copy operations listed above, the payload is copied in atomic 8-byte chunks (the remainder is atomically copy byte-wise)
-- while this approach technically avoids a data race, it cannot the integerity and coherence of the data as a whole and a read of a partially overwritten entry still needs to be discarded
+- for the copy operations listed above, the payload is copied atomically copy byte-wise
+- while this approach technically avoids a data race, it cannot guarantee the integerity and coherence of the data as a whole and a read of a partially overwritten entry still needs to be discarded
 - this problem could only be addressed via a custom copy-assigment operator for `T`, which is impossible to enforce at copile time and on top of that would kill the trivially-copyable constraint
 - an instance of `atomic_arr_copy_t<T>` can be default constructed or constructed from an instance of `T`
-- `atomic_arr_copy_t<T>` provides the interface `return_instance()` which is a simple getter for the payload
+- `atomic_arr_copy_t<T>` is convertible to `T` via an operator to avoid unnecessary copies
 
 #### `atomic_arr_copy_standin`
 `template <typename T>`<br>

@@ -42,20 +42,20 @@ void SEQ_LOCK_ELEMENT::insert(const PayloadType& new_content) noexcept {
 TEMPLATE_PARAMS
 std::tuple<std::optional<typename SEQ_LOCK_ELEMENT::PayloadType>, std::int64_t>
 SEQ_LOCK_ELEMENT::read(const std::int64_t prev_version) const noexcept {
-  std::int64_t initial_version;
+  std::tuple<std::optional<PayloadType>, std::int64_t> ret;
+  std::optional<PayloadType>& ret_opt = std::get<0>(ret);
+  std::int64_t& initial_version = std::get<1>(ret);
   std::atomic<std::int64_t> final_version;
-  ContentType ret_content;
   do {
     initial_version = this->version.load(std::memory_order_acquire);
-    // copy assigment may provide (if accept_UB == false) atomic copying to technically avoid UB
-    ret_content = this->content;
+    // atomic byte wise copying if accept_UB == false
+    // make use of implicit conversion
+    ret_opt = this->content;
     final_version.store(this->version,std::memory_order_release);
     // spin if write took place while reading
   } while (initial_version % 2 || (initial_version != final_version));
-  std::optional<PayloadType> ret_opt = initial_version >= prev_version
-                                           ? std::make_optional(ret_content.return_instance())
-                                           : std::nullopt;
-  return std::make_tuple(ret_opt, initial_version);
+  ret_opt = initial_version >= prev_version ? ret_opt : std::nullopt;
+  return ret;
 };
 
 TEMPLATE_PARAMS
