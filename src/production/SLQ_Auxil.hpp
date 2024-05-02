@@ -80,7 +80,7 @@ public:
 
   atomic_arr_copy(const atomic_arr_copy&& other){
     *this = other;
-};
+  };
 };
 
 template <typename T>
