@@ -1,3 +1,4 @@
+*.sh
 dump
 dump/*
 **/build/**
